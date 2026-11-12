@@ -782,21 +782,45 @@ try{
 
 function cloud(fn){ if(!cloudOK) return Promise.resolve(); return fn().catch(err=>{ toast('تعذّر الحفظ في السحابة: '+err.message,'bad'); throw err; }); }
 
+/* One-time upload of data that older versions kept only on this device */
+const MIG_KEY='mojaz_local_migrated_v2';
+const LOCAL_VISITS0 = LS.get(MIG_KEY,false) ? [] : (LS.get('mojaz_visits_saved',[])||[]).filter(v=>v&&v.id);
+const LOCAL_STAFF0  = LS.get(MIG_KEY,false) ? [] : (LS.get('mojaz_employees_saved',[])||[]).filter(e=>e&&e.id&&e.id!=='admin');
+let migVisitsDone=!LOCAL_VISITS0.length, migStaffDone=!LOCAL_STAFF0.length;
+function migFinish(){ if(migVisitsDone && migStaffDone) LS.set(MIG_KEY,true); }
+
 function listen(){
   if(!cloudOK){ setSync(false,'وضع محلي (بدون اتصال سحابي)'); return; }
-  staffRef.onSnapshot(snap=>{
+  staffRef.onSnapshot({includeMetadataChanges:true}, snap=>{
     const map = new Map(defaultEmployees.map(e=>[e.id,e]));
-    snap.forEach(doc=>{ const d=doc.data(); if(d && d.id){ if(d.deleted) map.delete(d.id); else map.set(d.id, {...map.get(d.id), ...d}); } });
+    const cloudIds=new Set();
+    snap.forEach(doc=>{ const d=doc.data(); if(d && d.id){ cloudIds.add(d.id); if(d.deleted) map.delete(d.id); else map.set(d.id, {...map.get(d.id), ...d}); } });
+    const defIds=new Set(defaultEmployees.map(e=>e.id));
+    const localOnly=LOCAL_STAFF0.filter(e=>!defIds.has(e.id) && !cloudIds.has(e.id));
+    if(!migStaffDone){ localOnly.forEach(e=>map.set(e.id,e)); }
+    if(!migStaffDone && !snap.metadata.fromCache){
+      migStaffDone=true;
+      if(localOnly.length) Promise.all(localOnly.map(e=>staffRef.doc(e.id).set(e))).then(()=>{ toast(`تم رفع ${localOnly.length} مستخدم كان محفوظاً على هذا الجهاز فقط`); migFinish(); }).catch(()=>{ migStaffDone=false; });
+      else migFinish();
+    }
     employees = Array.from(map.values());
     LS.set('mojaz_employees_saved', employees);
     refreshAll(); tryRestoreSession();
   }, ()=>setSync(false,'تعذّر الاتصال بالسحابة'));
   visitsRef.onSnapshot({includeMetadataChanges:true}, snap=>{
     const arr=[]; snap.forEach(doc=>{ const d=doc.data(); if(d) arr.push({...d, id:doc.id}); });
-    visits = arr; LS.set('mojaz_visits_saved', visits);
+    const ids=new Set(arr.map(v=>v.id));
+    const localOnly = migVisitsDone ? [] : LOCAL_VISITS0.filter(v=>!ids.has(v.id));
+    if(!migVisitsDone && !snap.metadata.fromCache){
+      migVisitsDone=true;
+      if(localOnly.length) Promise.all(localOnly.map(v=>visitsRef.doc(v.id).set(v))).then(()=>{ toast(`تم رفع ${localOnly.length} زيارة كانت محفوظة على هذا الجهاز فقط إلى السحابة ✓`); migFinish(); }).catch(()=>{ migVisitsDone=false; });
+      else migFinish();
+    }
+    visits = arr.concat(localOnly); LS.set('mojaz_visits_saved', visits);
     const pend = snap.docs.filter(d=>d.metadata.hasPendingWrites).length;
     if(pend) setSync(false, `جارٍ رفع ${pend} زيارة إلى السحابة...`);
-    else setSync(true, snap.metadata.fromCache ? 'يعمل دون اتصال — ستتم المزامنة لاحقاً' : 'متصل بالسحابة — كل البيانات محفوظة');
+    else if(snap.metadata.fromCache) setSync(false, navigator.onLine ? 'تعذّر الوصول لقاعدة البيانات — البيانات محفوظة على هذا الجهاز فقط' : 'لا يوجد إنترنت — ستتم المزامنة لاحقاً');
+    else setSync(true,'متصل بالسحابة — كل البيانات محفوظة');
     refreshAll();
   }, ()=>setSync(false,'تعذّر الاتصال بالسحابة'));
   msgsRef.onSnapshot(snap=>{
