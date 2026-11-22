@@ -597,7 +597,7 @@ tr.row-sel td{background:color-mix(in srgb,var(--navy-3) 7%,transparent)}
           </div>
           <div class="bulk-bar no-print hidden" id="bulkBar"></div>
           <div class="table-wrap"><table>
-            <thead><tr><th class="no-print sel-col"><input type="checkbox" id="schAll" title="تحديد مدارس هذه الصفحة"></th><th>المدرسة</th><th>الولاية</th><th>المراحل</th><th>الأخصائيون المُسندون</th><th>المعلمون</th><th>الزيارات</th><th>اعتمادات الفصل</th><th class="no-print">إجراءات</th></tr></thead>
+            <thead><tr><th class="no-print sel-col"><input type="checkbox" id="schAll" title="تحديد مدارس هذه الصفحة"></th><th>المدرسة</th><th>الولاية</th><th>المراحل</th><th id="schAsTh">الأخصائيون المُسندون</th><th>المعلمون</th><th>الزيارات</th><th>اعتمادات الفصل</th><th class="no-print">إجراءات</th></tr></thead>
             <tbody id="schBody"></tbody></table></div>
           <div class="pager no-print"><span id="schInfo"></span><div class="filters"><button class="btn btn-ghost btn-sm" id="schPrev">السابق</button><button class="btn btn-ghost btn-sm" id="schNext">التالي</button></div></div>
         </div>
@@ -1909,9 +1909,9 @@ const ASSIGN={sup:{f:'specialists',lbl:'الإشراف والمتابعة الم
 const supSpecs=s=>(s&&s.specialists)||[];
 const apSpecs=s=>(s&&Array.isArray(s.apSpecialists))?s.apSpecialists:[];
 const anySpec=(s,id)=>supSpecs(s).includes(id)||apSpecs(s).includes(id);
-function scopedSchools(){ if(!me) return []; if(isMgr()||myScope()==='all') return schools; return schools.filter(s=>anySpec(s,me.id)); }
+function scopedSchools(){ if(!me) return []; if(isMgr()||myScope()==='all') return schools; return schools.filter(s=>supSpecs(s).includes(me.id)); }
 function apScopedSchools(){ if(!me) return []; if(isMgr()||myScope()==='all') return schools; return schools.filter(s=>apSpecs(s).includes(me.id)); }
-function canEditTeacher(t){ if(!me) return false; if(isMgr()) return true; const s=schoolById(t&&t.schoolId); return !!s && anySpec(s,me.id); }
+function canEditTeacher(t){ if(!me) return false; if(isMgr()) return true; const s=schoolById(t&&t.schoolId); return !!s && supSpecs(s).includes(me.id); }
 function scopedTeachers(){ if(isMgr()||myScope()==='all') return teachers; const ids=new Set(scopedSchools().map(s=>s.id)); return teachers.filter(t=>ids.has(t.schoolId)); }
 
 /* ---------- departments ---------- */
@@ -2008,6 +2008,7 @@ function filteredSchools(){
   }).sort((a,b)=>sortAr(a.name,b.name));
 }
 function specChips(s){
+  if(!isMgr()){ const mine=t=>(t==='sup'?supSpecs(s):apSpecs(s)).includes(me.id); return ['sup','ap'].filter(mine).map(t=>`<div class="as-block"><span class="as-t ${t}">${ASSIGN[t].short}</span><span class="chip">أنت</span></div>`).join(''); }
   return ['sup','ap'].map(t=>`<div class="as-block"><span class="as-t ${t}">${ASSIGN[t].short}</span>${idsChips(t==='sup'?supSpecs(s):apSpecs(s))}</div>`).join('');
 }
 function idsChips(ids){
@@ -2025,12 +2026,13 @@ function renderSchools(){
   $('schCount').textContent=list.length;
   const mine=scopedSchools(); const noSup=mine.filter(s=>!supSpecs(s).length).length, noAp=mine.filter(s=>!apSpecs(s).length).length; const unassigned=mine.filter(s=>!supSpecs(s).length||!apSpecs(s).length).length;
   const tp=mine.map(termProgress); const tot=tp.reduce((a,b)=>a+b.total,0), ok=tp.reduce((a,b)=>a+b.ok,0);
-  $('schKpis').innerHTML = kpiHTML('c-teal','school', isMgr()?'إجمالي المدارس':'مدارسي', mine.length, isMgr()?'في المحافظة':'المُسندة إليك',null)+
+  $('schKpis').innerHTML = kpiHTML('c-teal','school', isMgr()?'إجمالي المدارس':'مدارسي', mine.length, isMgr()?'في المحافظة':'المُسندة إليك للإشراف',null)+
     (isMgr()?kpiHTML('c-amber','alert','مدارس تحتاج إسناداً',unassigned,unassigned?`${noSup} بلا إشراف · ${noAp} بلا متابعة اعتماد`:'كل المدارس مُسندة',mine.length?unassigned/mine.length*100:0):'')+
     kpiHTML('c-navy','users','المعلمون',scopedTeachers().length,'مسجّلون في المنصة',null)+
     kpiHTML('c-green','stamp','اعتمادات الفصل الحالي',tot?Math.round(ok/tot*100)+'%':'—',`${ok} من ${tot} بند معتمد · ${academic.year}`,tot?ok/tot*100:0);
   const tc={}; teachers.forEach(t=>tc[t.schoolId]=(tc[t.schoolId]||0)+1);
   document.querySelectorAll('.sel-col').forEach(x=>x.classList.toggle('hidden',!isMgr()));
+  $('schAsTh').textContent=isMgr()?'الأخصائيون المُسندون':'إسنادك';
   $('schBody').innerHTML = sl.length ? sl.map(s=>{ const p=termProgress(s); return `<tr class="${selSchools.has(s.id)?'row-sel':''}">
     ${isMgr()?`<td class="no-print sel-col"><input type="checkbox" class="schChk" value="${esc(s.id)}"${selSchools.has(s.id)?' checked':''}></td>`:''}
     <td><b>${esc(s.name)}</b>${s.code?`<span class="sub">رمز: ${esc(s.code)}</span>`:''}${s.phone?`<span class="sub" style="direction:ltr;text-align:right">${esc(s.phone)}</span>`:''}</td>
@@ -2236,7 +2238,7 @@ function openAppr(itemId, schoolId){
   const r=apRec(it,s)||{}; const st=r.status||'pending'; const can=canEditAppr(it,s);
   $('mApprT').textContent='اعتماد: '+it.title;
   const sp=apSpecs(s).map(id=>{ const e=empById(id); return e?e.name:''; }).filter(Boolean);
-  $('apprInfo').innerHTML=`<dt>المدرسة</dt><dd><b>${esc(s.name)}</b></dd><dt>البند</dt><dd>${esc(it.title)}</dd><dt>الفصل</dt><dd>${esc(it.term)} · ${esc(it.year)}</dd>${it.due?`<dt>آخر موعد</dt><dd>${fmtDate(it.due)}${it.due<today()&&st!=='approved'?' <span class="overdue">(متأخر)</span>':''}</dd>`:''}<dt>متابعة الاعتماد</dt><dd>${sp.length?esc(sp.join('، ')):'<span class="hint">لم يُسند أخصائي لمتابعة اعتماد هذه المدرسة</span>'}</dd>${r.updatedAt?`<dt>آخر تحديث</dt><dd>${esc(r.updatedByName||'')} · ${new Date(r.updatedAt).toLocaleString('ar-OM',{dateStyle:'medium',timeStyle:'short'})}</dd>`:''}`;
+  $('apprInfo').innerHTML=`<dt>المدرسة</dt><dd><b>${esc(s.name)}</b></dd><dt>البند</dt><dd>${esc(it.title)}</dd><dt>الفصل</dt><dd>${esc(it.term)} · ${esc(it.year)}</dd>${it.due?`<dt>آخر موعد</dt><dd>${fmtDate(it.due)}${it.due<today()&&st!=='approved'?' <span class="overdue">(متأخر)</span>':''}</dd>`:''}<dt>متابعة الاعتماد</dt><dd>${!isMgr()?(apSpecs(s).includes(me.id)?'مُسندة إليك':'—'):sp.length?esc(sp.join('، ')):'<span class="hint">لم يُسند أخصائي لمتابعة اعتماد هذه المدرسة</span>'}</dd>${r.updatedAt?`<dt>آخر تحديث</dt><dd>${esc(r.updatedByName||'')} · ${new Date(r.updatedAt).toLocaleString('ar-OM',{dateStyle:'medium',timeStyle:'short'})}</dd>`:''}`;
   const lockMsg = it.closed ? 'هذا البند مغلق من قِبل مسؤول النظام ولا يمكن تعديله.' : (!can ? (st==='approved'?'البند معتمد. لا يعدّل الحالة بعد الاعتماد إلا رئيس القسم أو مسؤول النظام.':'لا تملك صلاحية تعديل اعتماد هذه المدرسة.') : '');
   $('apprLock').classList.toggle('hidden',!lockMsg); $('apprLock').innerHTML=lockMsg?icon('lock')+' '+esc(lockMsg):'';
   document.querySelectorAll('input[name=apSt]').forEach(x=>{ x.checked=x.value===st; x.disabled=!can; });
@@ -2312,7 +2314,7 @@ function delItem(id){
 
 /* ---------- Visit form: link to schools & teachers ---------- */
 function fillDatalists(){
-  const names=[...new Set([...scopedSchools().map(s=>s.name),...schools.map(s=>s.name),...visits.map(v=>v.school).filter(Boolean)])];
+  const names=[...new Set([...scopedSchools().map(s=>s.name),...(isMgr()?schools.map(s=>s.name):[]),...scopedVisits().map(v=>v.school).filter(Boolean)])];
   $('dlSchools').innerHTML=names.map(s=>`<option value="${esc(s)}">`).join('');
   fillTeacherList();
 }
@@ -2428,8 +2430,8 @@ const EXPORTERS={
   follow:()=>{ const l=followList(); return {title:'المتابعات '+({open:'المفتوحة',overdue:'المتأخرة',closed:'المغلقة'}[followMode]||''),subtitle:'',headers:['المدرسة','المعلم','الأخصائي','تاريخ الزيارة','موعد المتابعة','الحالة','الإجراء المتخذ'],rows:l.map(v=>[v.school,v.teacher,v.specialist,fmtDate(v.date),v.followUpDate?fmtDate(v.followUpDate):'—',v.closedAt?'مغلقة':v.status,v.closeNote||'']),filename:`المتابعات_${today()}`}; },
   reports:()=>{ const t=groupTable(); const l=reportList(); return {title:GROUPS[rGroup].table,subtitle:reportScopeText(),headers:t.headers,rows:t.data,xlsx:[{name:GROUPS[rGroup].table,headers:t.headers,rows:t.data},{name:'تفاصيل الزيارات',headers:VISIT_HEAD,rows:l.map(visitRow)}],filename:`تقرير_${GROUPS[rGroup].t}_${today()}`}; },
   staff:()=>{ const q=norm($('sSearch').value); const l=scopedStaff().filter(e=>!q||norm(e.name+' '+e.role).includes(q)); return {title:'المستخدمون',subtitle:`${l.length} مستخدم`,headers:['الاسم','المسمى الوظيفي','القسم','الدور','اسم الدخول','الحالة','عدد المدارس المسندة','عدد الزيارات'],rows:l.map(e=>[e.name,e.role,e.dept,PERM_LBL[permOf(e)],loginName(e),isActive(e)?'مفعّل':'موقوف',schools.filter(s=>(s.specialists||[]).includes(e.id)).length,visits.filter(v=>visitSpecId(v)===e.id).length]),filename:`المستخدمون_${today()}`}; },
-  schools:()=>{ const l=filteredSchools(); return {title:'المدارس',subtitle:`${l.length} مدرسة`,headers:['المدرسة','الولاية','المراحل','الإشراف والمتابعة','متابعة الاعتماد','المعلمون','الزيارات','اعتمادات الفصل الحالي'],rows:l.map(s=>{ const p=termProgress(s); const nm=ids=>ids.map(id=>{const e=empById(id);return e?e.name+' ('+DEPT_SHORT(e.dept)+')':'';}).filter(Boolean).join('، '); return [s.name,s.wilayat||'',stagesTxt(s.stages),nm(supSpecs(s)),nm(apSpecs(s)),teachers.filter(t=>t.schoolId===s.id).length,schoolVisits(s).length,p.total?`${p.ok}/${p.total}`:'—']; }),
-    xlsx:[{name:'المدارس',headers:['اسم المدرسة','الولاية','المراحل','رمز المدرسة','الهاتف','أخصائيو الإشراف (أرقام وظيفية)','أخصائيو متابعة الاعتماد (أرقام وظيفية)','أسماء أخصائيي الإشراف','أسماء أخصائيي متابعة الاعتماد','المعلمون','الزيارات','ملاحظات'],rows:l.map(s=>[s.name,s.wilayat||'',stagesTxt(s.stages),s.code||'',s.phone||'',supSpecs(s).join('، '),apSpecs(s).join('، '),supSpecs(s).map(id=>(empById(id)||{}).name||'').join('، '),apSpecs(s).map(id=>(empById(id)||{}).name||'').join('، '),teachers.filter(t=>t.schoolId===s.id).length,schoolVisits(s).length,s.notes||''])}],filename:`المدارس_${today()}`}; },
+  schools:()=>{ const l=filteredSchools(); return {title:'المدارس',subtitle:`${l.length} مدرسة`,headers:['المدرسة','الولاية','المراحل','الإشراف والمتابعة','متابعة الاعتماد','المعلمون','الزيارات','اعتمادات الفصل الحالي'],rows:l.map(s=>{ const p=termProgress(s); const nm=ids=>(isMgr()?ids:ids.filter(x=>x===me.id)).map(id=>{const e=empById(id);return e?e.name+' ('+DEPT_SHORT(e.dept)+')':'';}).filter(Boolean).join('، '); return [s.name,s.wilayat||'',stagesTxt(s.stages),nm(supSpecs(s)),nm(apSpecs(s)),teachers.filter(t=>t.schoolId===s.id).length,schoolVisits(s).length,p.total?`${p.ok}/${p.total}`:'—']; }),
+    xlsx:!isMgr()?null:[{name:'المدارس',headers:['اسم المدرسة','الولاية','المراحل','رمز المدرسة','الهاتف','أخصائيو الإشراف (أرقام وظيفية)','أخصائيو متابعة الاعتماد (أرقام وظيفية)','أسماء أخصائيي الإشراف','أسماء أخصائيي متابعة الاعتماد','المعلمون','الزيارات','ملاحظات'],rows:l.map(s=>[s.name,s.wilayat||'',stagesTxt(s.stages),s.code||'',s.phone||'',supSpecs(s).join('، '),apSpecs(s).join('، '),supSpecs(s).map(id=>(empById(id)||{}).name||'').join('، '),apSpecs(s).map(id=>(empById(id)||{}).name||'').join('، '),teachers.filter(t=>t.schoolId===s.id).length,schoolVisits(s).length,s.notes||''])}],filename:`المدارس_${today()}`}; },
   teachers:()=>{ const l=filteredTeachers(); return {title:'المعلمون',subtitle:`${l.length} معلم`,headers:['اسم المعلم','الرقم الوظيفي','المدرسة','المادة','الهاتف'],rows:l.map(t=>[t.name,t.empNo||'',(schoolById(t.schoolId)||{}).name||'',t.subject||'',t.phone||'']),filename:`المعلمون_${today()}`}; },
   approvals:()=>{ const {year,term}=apSel(); let items=termItems(year,term); if($('apItem').value) items=items.filter(i=>i.id===$('apItem').value); const l=apFilteredSchools(items);
     const headers=['المدرسة','الولاية',...items.map(i=>i.title),'الإنجاز'];
