@@ -326,6 +326,8 @@ button.ap-cell:not(.na):hover{outline:2px solid var(--navy-3);outline-offset:1px
 .as-t{font-size:11px;font-weight:800;border-radius:6px;padding:2px 6px;white-space:nowrap;flex:none}
 .as-t.sup{background:var(--teal-soft);color:var(--teal)}
 .as-t.ap{background:var(--violet-soft);color:var(--violet)}
+.as-summary{padding:10px 22px;border-top:1px solid var(--line);font-size:13px;line-height:1.9;background:var(--surface-2)}
+details.as-sum summary{cursor:pointer;list-style-position:inside}
 .bulk-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;border-radius:12px;background:var(--surface-2);border:1px dashed var(--line);margin-bottom:12px;font-size:13px}
 .bulk-bar .hint{display:inline-flex;gap:6px;align-items:center}
 tr.row-sel td{background:color-mix(in srgb,var(--navy-3) 7%,transparent)}
@@ -507,7 +509,7 @@ tr.row-sel td{background:color-mix(in srgb,var(--navy-3) 7%,transparent)}
             </div>
             <div class="section-t">الجهة المزارة</div>
             <div class="grid-form">
-              <div class="field"><label>المدرسة <span class="req">*</span></label><input class="input" id="vSchool" list="dlSchools" placeholder="اسم المدرسة" required></div>
+              <div class="field"><label for="vSchoolSel">المدرسة <span class="req">*</span></label><select class="input" id="vSchoolSel"></select><input class="input hidden" id="vSchool" placeholder="اكتب اسم المدرسة" style="margin-top:8px" maxlength="150"><span class="hint" id="vSchoolHint"></span></div>
               <div class="field"><label>المعلم / الموظف المعني <span class="req">*</span></label><input class="input" id="vTeacher" list="dlTeachers" placeholder="الاسم" required></div>
               <div class="field"><label>المادة</label><input class="input" id="vSubject" list="dlSubjects" placeholder="مثال: الرياضيات"></div>
               <div class="field"><label>الصف / المرحلة</label>
@@ -595,6 +597,8 @@ tr.row-sel td{background:color-mix(in srgb,var(--navy-3) 7%,transparent)}
             <select class="input" id="schDept"></select>
             <select class="input" id="schAssigned"><option value="">كل المدارس</option><option value="nosup">بدون إسناد إشراف</option><option value="noap">بدون إسناد متابعة اعتماد</option><option value="none">بدون أي إسناد</option><option value="some">مُسند لها أخصائيون</option></select>
           </div>
+          <details class="card as-sum hidden no-print" id="asSumCard" style="margin-bottom:14px;padding:14px 18px"><summary><b>ملخص الإسناد لكل أخصائي</b> <span class="hint">للتأكد من أن كل أخصائي أُسندت إليه مدارسه</span></summary><div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>الأخصائي</th><th>القسم</th><th>مدارس الإشراف</th><th>مدارس متابعة الاعتماد</th><th class="no-print"></th></tr></thead><tbody id="asSumBody"></tbody></table></div></details>
+          <div id="schSpecChip"></div>
           <div class="bulk-bar no-print hidden" id="bulkBar"></div>
           <div class="table-wrap"><table>
             <thead><tr><th class="no-print sel-col"><input type="checkbox" id="schAll" title="تحديد مدارس هذه الصفحة"></th><th>المدرسة</th><th>الولاية</th><th>المراحل</th><th id="schAsTh">الأخصائيون المُسندون</th><th>المعلمون</th><th>الزيارات</th><th>اعتمادات الفصل</th><th class="no-print">إجراءات</th></tr></thead>
@@ -888,6 +892,7 @@ tr.row-sel td{background:color-mix(in srgb,var(--navy-3) 7%,transparent)}
         <label><input type="radio" name="asMode" value="remove"> إزالة المحددين</label>
       </div></div>
     <input class="input" id="asSearch" placeholder="بحث باسم الأخصائي" style="margin-bottom:12px"><div id="asBody"></div></div>
+  <div class="as-summary" id="asSummary"></div>
   <div class="modal-f"><button class="btn btn-primary" id="asSave"><span data-ic="save"></span> حفظ الإسناد</button><button class="btn btn-ghost" type="button" data-close>إلغاء</button></div>
 </div></div>
 
@@ -2002,6 +2007,7 @@ function filteredSchools(){
     if(st && (s.stages||[]).length && !(s.stages||[]).includes(st)) return false;
     const sp=[...supSpecs(s),...apSpecs(s)];
     if(d && !sp.some(id=>deptOfSpec(id)===d)) return false;
+    if(schSpecFilter && !anySpec(s,schSpecFilter)) return false;
     if(as==='nosup' && supSpecs(s).length) return false; if(as==='noap' && apSpecs(s).length) return false;
     if(as==='none' && sp.length) return false; if(as==='some' && !sp.length) return false;
     return true;
@@ -2033,6 +2039,8 @@ function renderSchools(){
   const tc={}; teachers.forEach(t=>tc[t.schoolId]=(tc[t.schoolId]||0)+1);
   document.querySelectorAll('.sel-col').forEach(x=>x.classList.toggle('hidden',!isMgr()));
   $('schAsTh').textContent=isMgr()?'الأخصائيون المُسندون':'إسنادك';
+  renderAssignSummary();
+  $('schSpecChip').innerHTML = schSpecFilter&&isMgr() ? `<div class="alert-strip as-violet">${icon('users')} عرض مدارس: ${esc((empById(schSpecFilter)||{}).name||'')}<button class="btn btn-sm" onclick="schSpecFilter='';renderSchools()">إظهار كل المدارس</button></div>` : '';
   $('schBody').innerHTML = sl.length ? sl.map(s=>{ const p=termProgress(s); return `<tr class="${selSchools.has(s.id)?'row-sel':''}">
     ${isMgr()?`<td class="no-print sel-col"><input type="checkbox" class="schChk" value="${esc(s.id)}"${selSchools.has(s.id)?' checked':''}></td>`:''}
     <td><b>${esc(s.name)}</b>${s.code?`<span class="sub">رمز: ${esc(s.code)}</span>`:''}${s.phone?`<span class="sub" style="direction:ltr;text-align:right">${esc(s.phone)}</span>`:''}</td>
@@ -2101,39 +2109,67 @@ function openAssign(ids, type){
   renderAssign(); openModal('mAssign');
 }
 document.querySelectorAll('#asTypeSeg button').forEach(b=>b.onclick=()=>{ assignType=b.dataset.t; renderAssign(); });
+function asLocked(d){ return myPerm()==='head' && d!==normDept(me.dept); }
+function asPeople(d){ const q=norm($('asSearch').value); return specialistsList().filter(e=>normDept(e.dept)===d && (!q||norm(e.name+' '+e.role).includes(q))).sort((a,b)=>sortAr(a.name,b.name)); }
 function renderAssign(){
-  if(!assignIds.length) return; const single=assignIds.length===1; const q=norm($('asSearch').value); const sel=asSel[assignType];
-  document.querySelectorAll('#asTypeSeg button').forEach(b=>{ b.classList.toggle('on',b.dataset.t===assignType); const n=asSel[b.dataset.t].size; b.querySelector('i').textContent=n?`(${n})`:''; });
-  $('asTypeHint').textContent = assignType==='sup' ? 'الأخصائيون المسؤولون عن زيارة المدرسة والإشراف عليها ومتابعة معلميها ميدانياً.' : 'الأخصائيون المسؤولون عن تحديث حالات اعتماد المدرسة في نافذة "متابعة اعتماد المدارس".';
-  const own=normDept(me.dept);
-  $('asBody').innerHTML = DEPTS.map(d=>{ const locked=myPerm()==='head' && d!==own; const people=specialistsList().filter(e=>normDept(e.dept)===d && (!q||norm(e.name+' '+e.role).includes(q))).sort((a,b)=>sortAr(a.name,b.name));
-    const n=people.filter(e=>sel.has(e.id)).length;
-    return `<div class="dept-group${locked?' locked':''}"><h4><span>${esc(d)}</span><span class="badge b-navy">${n} ${single?'مُسند':'محدد'}</span></h4>${locked?'<p class="hint" style="margin-bottom:8px">يُسند أخصائيو هذا القسم من قِبل رئيس القسم المعني أو المسؤول</p>':''}<div class="perm-grid">${people.map(e=>`<label><input type="checkbox" value="${esc(e.id)}"${sel.has(e.id)?' checked':''}${locked?' disabled':''}> <span>${esc(e.name)}<span class="sub hint">${esc(e.role)}</span></span></label>`).join('')||'<span class="hint">لا يوجد أخصائيون</span>'}</div></div>`; }).join('');
+  if(!assignIds.length) return; const single=assignIds.length===1; const sel=asSel[assignType];
+  $('asTypeHint').textContent = assignType==='sup' ? 'الأخصائيون المسؤولون عن زيارة المدرسة والإشراف عليها ومتابعة معلميها ميدانياً. تظهر لهم المدرسة في نافذة "المدارس".' : 'الأخصائيون المسؤولون عن تحديث حالات اعتماد المدرسة. تظهر لهم المدرسة في نافذة "متابعة اعتماد المدارس".';
+  $('asBody').innerHTML = `<div class="filters" style="margin-bottom:10px"><button type="button" class="btn btn-ghost btn-sm" data-asall="1">${icon('check')} تحديد جميع الأخصائيين</button><button type="button" class="btn btn-ghost btn-sm" data-asall="0">إلغاء التحديد</button><button type="button" class="btn btn-ghost btn-sm" data-ascopy="1">${icon('link')} نسخ هذا التحديد إلى ${assignType==='sup'?'متابعة الاعتماد':'الإشراف'}</button></div>`+
+    DEPTS.map(d=>{ const locked=asLocked(d); const people=asPeople(d);
+    return `<div class="dept-group${locked?' locked':''}" data-dept="${esc(d)}"><h4><span>${esc(d)}</span><span style="display:flex;gap:6px;align-items:center">${locked?'':`<button type="button" class="btn btn-ghost btn-sm" data-asdept="1">الكل</button><button type="button" class="btn btn-ghost btn-sm" data-asdept="0">لا أحد</button>`}<span class="badge b-navy" data-cnt></span></span></h4>${locked?'<p class="hint" style="margin-bottom:8px">يُسند أخصائيو هذا القسم من قِبل رئيس القسم المعني أو المسؤول</p>':''}<div class="perm-grid">${people.map(e=>`<label><input type="checkbox" value="${esc(e.id)}"${sel.has(e.id)?' checked':''}${locked?' disabled':''}> <span>${esc(e.name)}<span class="sub hint">${esc(e.role)}</span></span></label>`).join('')||'<span class="hint">لا يوجد أخصائيون</span>'}</div></div>`; }).join('');
+  updateAssignCounts();
 }
-$('asBody').addEventListener('change',e=>{ const c=e.target; if(c.type!=='checkbox') return; if(c.checked) asSel[assignType].add(c.value); else asSel[assignType].delete(c.value); renderAssign(); });
+function updateAssignCounts(){
+  const single=assignIds.length===1;
+  document.querySelectorAll('#asTypeSeg button').forEach(b=>{ b.classList.toggle('on',b.dataset.t===assignType); const n=asSel[b.dataset.t].size; b.querySelector('i').textContent=`(${n})`; });
+  document.querySelectorAll('#asBody .dept-group').forEach(g=>{ const n=[...g.querySelectorAll('input[type=checkbox]')].filter(c=>c.checked).length; g.querySelector('[data-cnt]').textContent=`${n} ${single?'مُسند':'محدد'}`; });
+  const mode=single?'set':document.querySelector('input[name=asMode]:checked').value;
+  const ML={set:'حفظ الإسناد كما هو محدد',add:'إضافة للأخصائيين الحاليين',replace:'استبدال الحاليين بالمحددين',remove:'إزالة المحددين'};
+  const parts=['sup','ap'].filter(t=>single||asSel[t].size).map(t=>`<b>${ASSIGN[t].lbl}</b>: ${asSel[t].size} أخصائي`);
+  $('asSummary').innerHTML = single ? `سيُحفظ للمدرسة: ${parts.join(' · ')}`
+    : (parts.length ? `سيُطبَّق على <b>${assignIds.length} مدرسة</b> — ${ML[mode]}:<br>${parts.join(' · ')}${['sup','ap'].filter(t=>!asSel[t].size).map(t=>`<br><span class="hint">${ASSIGN[t].lbl}: لن يتغير (لم تحدد أحداً)</span>`).join('')}` : '<span class="overdue">لم تحدد أي أخصائي بعد في أي من نوعي الإسناد</span>');
+}
+$('asBody').addEventListener('change',e=>{ const c=e.target; if(c.type!=='checkbox') return; if(c.checked) asSel[assignType].add(c.value); else asSel[assignType].delete(c.value); updateAssignCounts(); });
+$('asBody').addEventListener('click',e=>{
+  const all=e.target.closest('[data-asall]'), dep=e.target.closest('[data-asdept]'), cp=e.target.closest('[data-ascopy]');
+  if(all){ const on=all.dataset.asall==='1'; DEPTS.forEach(d=>{ if(asLocked(d)) return; asPeople(d).forEach(p=>on?asSel[assignType].add(p.id):asSel[assignType].delete(p.id)); }); renderAssign(); }
+  else if(dep){ const d=dep.closest('.dept-group').dataset.dept; const on=dep.dataset.asdept==='1'; asPeople(d).forEach(p=>on?asSel[assignType].add(p.id):asSel[assignType].delete(p.id)); renderAssign(); }
+  else if(cp){ const other=assignType==='sup'?'ap':'sup'; const keepLocked=[...asSel[other]].filter(x=>asLocked(deptOfSpec(x))); asSel[other]=new Set([...keepLocked,...[...asSel[assignType]].filter(x=>!asLocked(deptOfSpec(x)))]); updateAssignCounts(); toast('تم نسخ التحديد إلى '+ASSIGN[other].lbl); }
+});
+document.querySelectorAll('input[name=asMode]').forEach(r=>r.addEventListener('change',updateAssignCounts));
 $('asSearch').addEventListener('input',renderAssign);
 $('asSave').onclick=()=>{
   if(!isMgr()||!assignIds.length) return; const single=assignIds.length===1; const own=normDept(me.dept); const head=myPerm()==='head';
   const mode=single?'set':document.querySelector('input[name=asMode]:checked').value;
-  const types=single?['sup','ap']:[assignType];
-  if(!single && !asSel[assignType].size && mode!=='replace') return toast('اختر أخصائياً واحداً على الأقل','bad');
-  const now=new Date().toISOString(); const ops=[]; const gained={};
+  // apply to BOTH assignment types: every type that has a selection (bulk), or both (single school)
+  const types=single?['sup','ap']:['sup','ap'].filter(t=>asSel[t].size);
+  if(!types.length) return toast('اختر أخصائياً واحداً على الأقل في الإشراف أو متابعة الاعتماد','bad');
+  const now=new Date().toISOString(); const ops=[]; const gained={}; const stat={sup:0,ap:0};
   assignIds.forEach(id=>{ const s=schoolById(id); if(!s) return; const patch={updatedAt:now,updatedBy:me.id};
-    types.forEach(t=>{ const f=ASSIGN[t].f; const before=t==='sup'?supSpecs(s):apSpecs(s); const pick=[...asSel[t]].filter(x=>!head||deptOfSpec(x)===own);
+    types.forEach(t=>{ const f=ASSIGN[t].f; const before=t==='sup'?supSpecs(s):apSpecs(s); const pick=[...asSel[t]].filter(x=>empById(x)&&(!head||deptOfSpec(x)===own));
       let next;
-      if(mode==='set') next=head?[...before.filter(x=>deptOfSpec(x)!==own),...pick]:pick;
+      if(mode==='set'||mode==='replace') next=head?[...before.filter(x=>deptOfSpec(x)!==own),...pick]:pick;
       else if(mode==='add') next=[...before,...pick];
-      else if(mode==='remove') next=before.filter(x=>!pick.includes(x));
-      else next=head?[...before.filter(x=>deptOfSpec(x)!==own),...pick]:pick;
-      next=[...new Set(next)]; s[f]=next; patch[f]=next;
+      else next=before.filter(x=>!pick.includes(x));
+      next=[...new Set(next.map(String))]; s[f]=next; patch[f]=next; stat[t]++;
       next.filter(x=>!before.includes(x)).forEach(x=>{ (gained[x]=gained[x]||{sup:[],ap:[]})[t].push(s.name); }); });
     s.updatedAt=now; ops.push({ref:schoolsRef,id:s.id,data:patch,merge:true}); });
-  saveLocal(); batchWrite(ops); closeModal('mAssign');
-  Object.entries(gained).forEach(([x,g])=>['sup','ap'].forEach(t=>{ if(!g[t].length) return; notify(x, g[t].length>1?`أُسندت إليك ${g[t].length} مدارس — ${ASSIGN[t].lbl}`:`أُسندت إليك مدرسة — ${ASSIGN[t].lbl}`, g[t].join('\n')); }));
+  saveLocal(); closeModal('mAssign');
+  batchWrite(ops).then(()=>{ if(cloudOK) toast('تم حفظ الإسناد في السحابة ✓'); });
+  Object.entries(gained).forEach(([x,g])=>['sup','ap'].forEach(t=>{ if(!g[t].length) return; const list=g[t].length>15?g[t].slice(0,15).join('\n')+`\n... و${g[t].length-15} مدرسة أخرى`:g[t].join('\n'); notify(x, g[t].length>1?`أُسندت إليك ${g[t].length} مدرسة — ${ASSIGN[t].lbl}`:`أُسندت إليك مدرسة — ${ASSIGN[t].lbl}`, list); }));
   if(!single) selSchools.clear();
-  refreshV6(); toast(single?'تم حفظ إسناد الأخصائيين':`تم تطبيق الإسناد على ${assignIds.length} مدرسة`);
+  refreshV6(); toast(single?'تم حفظ إسناد الأخصائيين':`تم تطبيق الإسناد على ${assignIds.length} مدرسة (${types.map(t=>ASSIGN[t].short).join(' + ')})`);
 };
-
+/* assignment summary per specialist (managers) */
+function renderAssignSummary(){
+  const box=$('asSumCard'); if(!box) return; box.classList.toggle('hidden',!isMgr()); if(!isMgr()) return;
+  const own=normDept(me.dept);
+  const people=specialistsList().filter(e=>myPerm()==='admin'||normDept(e.dept)===own).sort((a,b)=>sortAr(DEPT_SHORT(a.dept),DEPT_SHORT(b.dept))||sortAr(a.name,b.name));
+  $('asSumBody').innerHTML = people.map(e=>{ const sp=schools.filter(s=>supSpecs(s).includes(e.id)).length, ap=schools.filter(s=>apSpecs(s).includes(e.id)).length;
+    return `<tr><td><b>${esc(e.name)}</b><span class="sub">${esc(e.role)}</span></td><td>${esc(DEPT_SHORT(e.dept))}</td><td>${sp?`<span class="badge b-teal">${sp}</span>`:'<span class="badge b-amber">0</span>'}</td><td>${ap?`<span class="badge b-violet">${ap}</span>`:'<span class="badge b-amber">0</span>'}</td><td class="no-print"><button class="btn btn-ghost btn-sm" onclick="showSpecSchools('${esc(e.id)}')">عرض مدارسه</button></td></tr>`; }).join('');
+}
+function showSpecSchools(id){ const e=empById(id); if(!e) return; $('schSearch').value=''; ['schWil','schStage','schDept','schAssigned'].forEach(x=>$(x).value=''); schSpecFilter=id; schPage=1; renderSchools(); toast('عرض مدارس: '+e.name); $('schBody').scrollIntoView({behavior:'smooth',block:'start'}); }
+let schSpecFilter='';
 /* ---------- Teachers ---------- */
 let tchPage=1; const TPER=25;
 function fillSchoolSelect(id, firstLbl, onlyMine){
@@ -2324,6 +2360,25 @@ function fillTeacherList(){
   $('dlTeachers').innerHTML=[...new Set(list)].sort(sortAr).map(n=>`<option value="${esc(n)}">`).join('');
 }
 $('vSchool').addEventListener('input',fillTeacherList);
+function fillVisitSchools(){
+  if(!me||!$('vSchoolSel')) return;
+  const cur=$('vSchool').value.trim(); const byName=n=>schools.find(s=>norm(s.name)===norm(n));
+  const sort=l=>l.slice().sort((a,b)=>sortAr(a.name,b.name)); let html=opt('','اختر المدرسة...');
+  if(isMgr()||myScope()==='all'){ html+=sort(schools).map(s=>opt(s.id,s.name)).join(''); }
+  else { const sup=sort(schools.filter(s=>supSpecs(s).includes(me.id))); const ap=sort(schools.filter(s=>apSpecs(s).includes(me.id)&&!supSpecs(s).includes(me.id)));
+    if(sup.length) html+=`<optgroup label="مدارسي — الإشراف والمتابعة الميدانية">${sup.map(s=>opt(s.id,s.name)).join('')}</optgroup>`;
+    if(ap.length) html+=`<optgroup label="مدارسي — متابعة الاعتماد">${ap.map(s=>opt(s.id,s.name)).join('')}</optgroup>`;
+    $('vSchoolHint').textContent = (sup.length||ap.length) ? `${sup.length+ap.length} مدرسة مُسندة إليك` : 'لم تُسند إليك أي مدرسة بعد. تواصل مع رئيس القسم، أو اختر "مدرسة غير مدرجة" لكتابة الاسم يدوياً.'; }
+  if(isMgr()) $('vSchoolHint').textContent = schools.length ? '' : 'لم تُضف مدارس بعد. أضفها من نافذة المدارس، أو اختر "مدرسة غير مدرجة".';
+  html+=opt('__other','مدرسة غير مدرجة في القائمة (كتابة يدوية)');
+  $('vSchoolSel').innerHTML=html;
+  const m=cur&&byName(cur); const inList=m&&[...$('vSchoolSel').options].some(o=>o.value===m.id);
+  $('vSchoolSel').value = inList ? m.id : (cur ? '__other' : '');
+  $('vSchool').classList.toggle('hidden', $('vSchoolSel').value!=='__other');
+}
+$('vSchoolSel').addEventListener('change',()=>{ const v=$('vSchoolSel').value; if(v==='__other'){ $('vSchool').value=''; $('vSchool').classList.remove('hidden'); $('vSchool').focus(); } else { const s=schoolById(v); $('vSchool').value=s?s.name:''; $('vSchool').classList.add('hidden'); } fillTeacherList(); });
+document.addEventListener('submit',e=>{ if(e.target&&e.target.id==='visitForm'&&!$('vSchool').value.trim()){ e.preventDefault(); e.stopImmediatePropagation(); toast('اختر المدرسة أولاً','bad'); $('vSchoolSel').focus(); } },true);
+{ const _ev=editVisit; editVisit=function(id){ _ev(id); fillVisitSchools(); fillTeacherList(); }; const _rv=resetVisitForm; resetVisitForm=function(){ _rv(); if(me) fillVisitSchools(); }; }
 $('vTeacher').addEventListener('change',()=>{ const s=schoolByName($('vSchool').value); const t=teachers.find(x=>norm(x.name)===norm($('vTeacher').value)&&(!s||x.schoolId===s.id)); if(t&&t.subject&&!$('vSubject').value) $('vSubject').value=t.subject; });
 
 /* ---------- Reports (filters: all / dept / specialist / school / subject) ---------- */
@@ -2643,7 +2698,7 @@ function refreshV6(){
   const items=termItems(academic.year,academic.term).filter(i=>!i.closed); const sc=isMgr()?[]:apScopedSchools();
   let n=0; if(isMgr()) n=approvals.filter(a=>a.status==='not_approved'&&items.some(i=>i.id===a.itemId)).length; else sc.forEach(s=>items.forEach(it=>{ if(itemApplies(it,s)&&apStatus(it,s)==='not_approved') n++; }));
   $('apCount').textContent=n; $('apCount').classList.toggle('hidden',!n);
-  fillDatalists();
+  fillDatalists(); if(!$('vId').value || document.activeElement!==$('vSchoolSel')) fillVisitSchools();
 }
 const _refreshAll=refreshAll; refreshAll=function(){ _refreshAll(); if(me) refreshV6(); };
 const _applyPermUI=applyPermUI; applyPermUI=function(){
